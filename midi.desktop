@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=midi
+Comment=midi
+Exec=/usr/local/bin/MIDIInput.sh
+Terminal=True
+X-GNOME-Autostart-enabled=true
+Hidden=false
+NoDisplay=false

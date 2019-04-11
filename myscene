@@ -1,0 +1,92 @@
+#!/bin/bash
+
+# Check for SNOWMIX variable and the snowmix and gstreamer settings
+if [ "X$SNOWMIX" = X -o ! -d $SNOWMIX ] ; then
+  echo "You need to se the environment variable SNOWMIX to the base of the Snowmix directory"
+  exit 1
+fi
+if [ "X$SNOWMIX_PORT" = X ] ; then export SNOWMIX_PORT=9999 ;fi
+if [ "X$SNOWMIX_IP" = X ] ; then export SNOWMIX_IP=127.0.0.1 ;fi
+
+rm -rf /home/studio/testout.mp4
+rm -rf /home/studio/cut.mp4
+system=`uname -s`
+term=/usr/bin/gnome-terminal
+rm -rf /dev/shm/shmpipe*
+get_shm() #Функция для проверки потоков и памяти под них
+{
+  if [ -d /run/shm -a ! -L /run/shm ] ; then shmdir=/run/shm
+  else
+    if [ -d /dev/shm -a ! -L /dev/shm ] ; then shmdir=/dev/shm
+    else
+      echo 'needs /dev/shm or /run/shm' 1>&2
+    fi
+  fi
+  shm=`df -k |grep $shmdir | awk '{printf("%d\n", $4/1024)}'`
+  if [ X$shm = X ] ; then shm=0 ; fi
+  if [ $shm -lt $1 ] ; then
+    echo 'not enough shared memory. Delete some files in /run/shm/' 1>&2
+    exit 1
+  fi
+  echo $shm
+}
+
+
+inifile=myscene
+with_audio=1
+with_scene=1
+
+pid_list=""
+
+get_shm 20
+
+echo Starting Snowmix
+$term -e "snowmix ini/$inifile.ini" &
+snowmix_pid=$!
+
+sleep 3
+#if [ $with_audio = 1 ] ; then app=av_output2screen ; else app=output2screen ; fi
+if [ $with_audio = 1 ] ; then app=out2 ; else app=output2screen ; fi
+$term -e $app &
+export OUTPID=$!
+
+if [ $with_scene = 1 ] ; then
+ which snowscene.tcl
+  if [ $? != 0 ] ; then
+   echo "Warning. snowscene.tcl was not installed"
+  else
+   sleep 2
+    (
+     sleep 2
+      snowscene.tcl 127.0.0.1 9999
+    )&
+    sleep 2
+    pid_list="$pid_list $!"
+    echo "pid to kill for snowscene $!"
+  fi
+fi
+
+if [ $with_audio = 1 ] ; then
+ which snowaudio.tcl
+if [ $? != 0 ] ; then
+ echo "Warning. snowaudio.tcl was not installed"
+  else
+  sleep 2
+   (
+    sleep 2
+     snowaudio.tcl 127.0.0.1 9999
+   )&
+    pid_list="$pid_list $!"
+    echo "pid to kill for snowaudio $!"
+  fi
+fi
+
+sleep 6
+get_shm 20
+$term -e "rtsp2feed_alpha 1 rtsp://192.168.15.52:554/live/av0"&
+#$term -e "rtsp2feed_wo_alpha 2 rtsp://192.168.15.52:554/live/av0"&
+$term -e "rtsp2feed_wo_alpha 2 rtsp://192.168.15.44:554/live/av0"&
+$term -e "in_audio"&
+pid_list="$pid_list $!"
+sleep 5
+wmctrl -a OpenGL renderer

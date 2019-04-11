@@ -1,0 +1,47 @@
+#!/bin/bash
+
+if [ "X$SNOWMIX" = X ] ; then
+  echo "You need to set the SNOWMIX environment variable to the base of the Snowmix installed directory"
+  exit 1
+fi
+SNOWMIX_PORT=9999
+SNOWMIX_IP=127.0.0.1
+
+if [ $# -ne 2 ] ; then
+  echo "Missing argument\nUsage $0 <feed id> <rtsp url>"
+  exit 1
+fi
+
+# Set video feed and audio feed id
+feed_id=$1
+location=$2
+
+# Buffer latency. Only used for rtspsrc
+latency=0
+protocol='GST_RTSP_LOWER_TRANS_TCP'
+SRC="rtspsrc location=$location latency=$latency protocols=$protocol ! decodebin name=decoder "
+
+feed_width=1920
+feed_height=1080
+feed_control_pipe="/tmp/feed-$feed_id-control-pipe"
+
+# Settings for shmsink
+SHMSIZE='shm-size='`echo "$feed_width * $feed_height * 4 * 20"|bc`
+SHMOPTION="wait-for-connection=0 sync=true"
+SHMSINK1="shmsink socket-path=$feed_control_pipe $SHMSIZE $SHMOPTION"
+src_type=`echo $SRC | cut -f1 -d' '`
+VIDEOFORMAT='video/x-raw,format=BGRA'
+#VIDEOFORMAT='video/x-raw,format=BGRA,pixel-aspect-ratio=1/1,interlace-mode=progressive,width='$feed_width',height='$feed_height
+while true ; do
+    if [ -e $feed_control_pipe ] ; then rm $feed_control_pipe ; fi
+    echo "Video only. src = $src_type"
+     /usr/local/bin/gst-launch-1.0 -v \
+        $SRC        !\
+	videoconvert !\
+  alpha alpha=1.0 method=custom target-r=66 target-g=170 target-b=124 angle=30 !\
+	$VIDEOFORMAT !\
+        $SHMSINK1
+    sleep 2
+    #sleep 2000
+done
+

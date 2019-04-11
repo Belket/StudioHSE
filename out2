@@ -1,0 +1,32 @@
+#!/bin/bash
+# Deliver mixer1 output and audio output to screen and audio
+rm /usr/local/bin/testout.mp4
+# alsasrc device=hw:2,0
+# IMPORTANT >>>>>You need to get port, ip and feed_id right<<<<<
+system_width=1920
+system_height=1080
+ASRC='alsasrc device=hw:1,0 ! audio/x-raw,rate=48000 ! audioconvert ! queue'
+VIDEOFORMAT='video/x-raw,format=BGRA, width=1920, height=1080, framerate=25/1'
+SNOWMIXVIDEOSRC=shmsrc
+basename=recording
+timestamp="$(date +"%T")"
+type=.avi
+outname="$basename$timestamp$type"
+file="$outname"
+(echo audio sink ctr isaudio 1 ; sleep 10000000 ) | \
+nc 127.0.0.1 9999 | \
+( head -1
+/usr/local/bin/gst-launch-1.0 -ve shmsrc socket-path=/tmp/mixer1 do-timestamp=true is-live=true ! \
+    tee name=repeat !\
+    queue leaky=2 max-size-buffers=2 ! \
+    $VIDEOFORMAT            ! \
+    videoconvert        ! \
+   autovideosink \
+    repeat. ! \
+    queue leaky=2 ! \
+    $VIDEOFORMAT            ! \
+    videoconvert           ! \
+    x264enc ! queue ! mux.video_0 \
+    fdsrc fd=0 do-timestamp=true ! audio/x-raw, format=S16LE, rate=44100, channels=2 ! mux.audio_0 \
+    avimux name=mux ! filesink sync=false location=$file
+)
